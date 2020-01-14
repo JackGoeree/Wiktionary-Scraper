@@ -8,6 +8,7 @@ import os.path
 
 '''
 TODO: 
+- possible issue: inflection skips verb
 - incorporate notes from individual scripts
 - make a single Wiktionary page parser used by all 
 - make a common read and write function for csv
@@ -80,6 +81,8 @@ def corpus(lang, overwrite='n', input_file=None, output_file=None):
         i = i + 1
         if i % 10000 == 0:
             print('Processed ' + str(i) + ' articles')
+            # 40k articles caused a memory error
+            break
     output.close()
 
     print('Corpus created!')
@@ -461,7 +464,7 @@ def inflect(lang, language, overwrite='n'):
                   newline='') as csvW:  # change to 'a' if want to append instead of overwrite
             writer = csv.writer(csvW, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
             writer.writerows(form_list)
-        print(pos + "inflection completed!")
+        print(pos + " inflection completed at " + time.localtime(time.time()) + "!")
 
     print('All inflection completed!')
     checkpoint = time.time()
