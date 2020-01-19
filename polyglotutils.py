@@ -5,6 +5,7 @@ from gensim.corpora import WikiCorpus
 import csv
 import time
 import os.path
+from googletrans import Translator
 
 '''
 TODO: 
@@ -13,10 +14,11 @@ TODO:
 - make a single Wiktionary page parser used by all 
 - make a common read and write function for csv
 - make a common progress tracker
-- add time since last checkpoint
+- add time since last checkpoint - make checkpoint global so can reference value from other functions
 - ensure each function can be called independently, overwriting default values with parameters
 - make separate functions for gender, IPA etc rather than definition scraper
-- choose either ISO code or language name as only parameter - use a word_dictionary to get the other
+- choose either ISO code or language name as only parameter - use a word_dictionary to get the other - Tatoeba uses 
+3 digit while wiktionary uses 2 digit, wikipedia uses combo
 - lemmatise, translate, define need to check if output already exists before executing
 
 '''
@@ -52,7 +54,7 @@ def duration(start, finish):
     return elapsed_pretty
 
 
-# builds a corpus for a given language from Wikipedia dump (bz2 file)
+# builds a corpus for a given language from Wikipedia dump (bz2 file - do not extract)
 def corpus(lang, overwrite='n', input_file=None, output_file=None):
     # Convert Wikipedia xml dump file to text corpus
     
@@ -92,10 +94,21 @@ def corpus(lang, overwrite='n', input_file=None, output_file=None):
 
 # creates a list of words by frequency found in input_file
 def frequency(lang, overwrite='n', input_file=None, output_file=None):
+    # temporary measure to allow input of 3 digit lang codes - will not work for all codes eg lv / lav Latvian
+    lang_3 = None
+    try:
+        if lang[2] is not None:
+            lang_3 = lang
+            lang = lang[:2]
+    except IndexError:
+        lang = lang
+
     if input_file is None:
         input_file = lang + '_corpus.txt'
     if output_file is None:
         output_file = lang + '_corpus_freq.csv'
+
+
         
     if overwrite == 'n':
         try:
@@ -125,14 +138,22 @@ def frequency(lang, overwrite='n', input_file=None, output_file=None):
     for w in sorted(word_dict, key=word_dict.get, reverse=True):
         freq_row = []
         if word_dict[w] > 1:
-            freq_row.append(w)
-            freq_row.append(word_dict[w])
-            freq_list.append(freq_row)
-            if y < 20:
-                # print(w, word_dict[w])
-                y += 1
+            # limit the number of entries to 5000
+            if len(freq_list) < 5000:
+                freq_row.append(w)
+                freq_row.append(word_dict[w])
+                # add an example sentence to each form
+                '''if lang_3 is not None:
+                    freq_row.append(find_example(lang_3, w))'''
+                freq_list.append(freq_row)
+                if y < 20:
+                    # print(w, word_dict[w])
+                    y += 1
+            else:
+                print("Frequency row limit reached.")
+                break
 
-    with open(lang + '_corpus_freq.csv', 'w', encoding='utf-8',
+    with open(output_file, 'w', encoding='utf-8',
               newline='') as csvW:  # change to 'a' if want to append instead of overwrite
         writer = csv.writer(csvW, delimiter=',', quotechar='@', quoting=csv.QUOTE_MINIMAL)
         # print(def_list)
@@ -141,6 +162,8 @@ def frequency(lang, overwrite='n', input_file=None, output_file=None):
     print('Frequency list completed!')
     checkpoint = time.time()
     print('Time since start: ' + duration(start_time, checkpoint))
+
+    merge(lang, overwrite)
 
 
 def create_word_list(file):
@@ -193,6 +216,7 @@ def scrape_lemmas(lang, language, overwrite='n'):
         pos = part
         print('Scraping ' + pos + ' lemmas...')
         lemma_list = scrape(language, pos)
+        lemma_count = len(lemma_list)
         # print(str(195) + str(type(lemma_list)))
         with open(lang + '_' + pos.lower() + '_lemmas.csv', 'w', encoding='utf-8',
                   newline='') as csvW:  # change to 'a' if want to append instead of overwrite
@@ -202,7 +226,9 @@ def scrape_lemmas(lang, language, overwrite='n'):
             writer.writerows(lemma_list)
             lemma_list = []
 
-    print('Lemma scraping completed!')
+    print(str(lemma_count) + ' ' + pos + ' lemmas scraped!')
+    if lemma_count > 5000:
+        print("Consider using a lemmatiser instead of the lemmatise function due to the high number of lemmas.")
     checkpoint = time.time()
     print('Time since start: ' + duration(start_time, checkpoint))
 
@@ -285,7 +311,7 @@ def scrape(language, pos, url=None):
     return lemma_list
 
 
-def inflect(lang, language, overwrite='n'):
+def inflect(lang, language, overwrite='n', input_file=None):
     pos_list = ['Noun', 'Verb', 'Adjective', 'Adverb', 'Preposition', 'Conjunction', 'Pronoun', 'Determiner', 'Numeral',
                 'Proper_noun', 'Personal_pronoun', 'Article', 'Interjection']
 
@@ -318,11 +344,13 @@ def inflect(lang, language, overwrite='n'):
     for pos in pos_list:
 
         print('Inflecting ' + pos.lower() + 's...')
+        if input_file is None:
+            input_file = lang + '_' + pos.lower() + '_lemmas.csv'
         count = 0
         begin = time.time()
         # print(begin)
         # print('Progress:  ')
-        with open(lang + '_' + pos.lower() + '_lemmas.csv', 'r',
+        with open(input_file, 'r',
                   encoding='utf-8') as csvR:  # change to 'a' if want to append instead of overwrite
             reader = csv.reader(csvR)
             for row in reader:
@@ -345,7 +373,7 @@ def inflect(lang, language, overwrite='n'):
                 page = urlopen(quote_page)
             except:
                 print('No web page was found at ' + quote_page)
-                not_found(form_list)
+                # not_found(form_list)
                 return
 
             soup = BeautifulSoup(page, 'html.parser')
@@ -472,13 +500,13 @@ def inflect(lang, language, overwrite='n'):
 
 
 # creates an empty line in output file if inflections could not be found
-def not_found(form_list):
+'''def not_found(form_list):
     forms = []
     i = 0
     while i < 9:
         forms.append('')
         i += 1
-    form_list.append(forms)
+    form_list.append(forms)'''
 
 
 def lemmatise(lang, overwrite='n'):
@@ -691,14 +719,6 @@ def translate(lang, overwrite='n'):
     print('Time since start: ' + duration(start_time, checkpoint))
 
 
-'''def GoogleTranslate(word):
-    # requires langcode to be the same on wiktionary and google translate - not true for serbo-croatian and croatian
-    print('Trying google translate')
-    word = word.replace(' ', '_')
-    translation = translator.translate(word, dest=langCode, src='en').text
-    print(translation)
-    return translation'''
-
 # creates an empty line in output file if inflections could not be found
 '''def not_found(word):
     print('No translation found')
@@ -905,13 +925,124 @@ def define(lang, language, overwrite='n'):
     def_row = []
     # def_row.append(word)
     print(word, def_row)
-    def_list.append(def_row)
+    def_list.append(def_row)'''
 
 
-def GoogleTranslate(word):
+def google_translate(word, lang=None):
     # requires langcode to be the same on wiktionary and google translate - not true for serbo-croatian and croatian
+    translator = Translator()
     print('Trying google translate')
-    word = word.replace(' ', '_')
-    translation = translator.translate(word, dest='en', src=langCode).text
+    try:
+        if lang is not None:
+            translation = translator.translate(word, dest='en', src=lang).text
+        else:
+            translation = translator.translate(word, dest='en').text
+    except ValueError:
+        print("ERROR: The src language code used by google translate is different to the one used by Wiktionary.")
+        return
     print(translation)
-    return translation'''
+    return translation
+
+
+# lemma must be first column, freqs second
+def merge(lang, overwrite='n', input_file=None):
+    print("Merging duplicates...")
+    freq_list = []
+
+    if overwrite == 'n':
+        return
+    if input_file is None:
+        input_file = lang + "_corpus_freq.csv"
+
+    with open(input_file, 'r', encoding='utf-8') as csvR:
+        reader = csv.reader(csvR)
+        for row in reader:
+            # print(row[0])
+            freq_list.append(row)
+
+    '''file = open(input_file, 'r', encoding='utf-8')
+    if file is None:
+        print('Invalid file.')
+        return
+    for line in file:
+        for item in line:
+            freq_row.append(item)
+        freq_list.append(freq_row)
+    file.close()'''
+
+    print("Alphabetising...")
+    #print(freq_list[0])
+    #print(freq_list[0][0])
+    alpha_freqs = sorted(freq_list)
+    #print(alpha_freqs[20:100])
+
+    # convert freqs to int rather than str
+    for row in alpha_freqs:
+        row[1] = int(row[1])
+
+    x = 0
+    try:
+        while x < len(alpha_freqs):
+            current_lemma = alpha_freqs[x][0]
+            next_lemma = alpha_freqs[x+1][0]
+            # if duplicate, merge frequency counts
+            while current_lemma == next_lemma:
+                # print("Duplicate found.")
+                current_freq = int(alpha_freqs[x][2])
+                next_freq = int(alpha_freqs[x+1][2])
+                # print(alpha_freqs[x+1][1] + " has the same lemma as " + alpha_freqs[x][1] + ". By adding " +
+                # str(current_freq) + " and " + str(next_freq) + " the new total is " + str(current_freq + next_freq))
+                current_freq += next_freq
+                alpha_freqs[x][2] = current_freq
+                alpha_freqs.pop(x+1)
+                next_lemma = alpha_freqs[x + 1][0]
+            x += 1
+    except IndexError:
+        # reached end of list
+        x = 0
+
+    # sort by frequency again
+    unique_freqs = sorted(alpha_freqs, key=take_third, reverse=True)
+    print(unique_freqs[:10])
+
+    with open(input_file, 'w', encoding='utf-8', newline='') as csvW:  # change to 'a' if want to append instead of overwrite
+        writer = csv.writer(csvW, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+        writer.writerows(unique_freqs)
+
+    checkpoint = time.time()
+    print('Time since start: ' + duration(start_time, checkpoint))
+
+
+def take_third(elem):
+    return elem[2]
+
+
+# collects example sentences for each form from Tatoeba
+def find_example(lang, word):
+    sentences = []
+    quote_page = "https://tatoeba.org/eng/sentences/search?from=" + lang + "&to=und&query=" + urllib.parse.quote(word)
+
+    try:
+        page = urlopen(quote_page)
+    except ValueError:
+        print("No web page was found at " + quote_page + ". Did you enter a valid English word?")
+        return
+
+    soup = BeautifulSoup(page, 'html.parser')
+
+    # match = soup.find_next(class_="match")
+    # sentence = match.parent.get_text()
+
+    # do below if want more than one sentence
+    matches = soup.find_all(class_="match")
+
+    if len(matches) == 0:
+        return ""
+    match = matches[0]
+    # for match in matches:
+    sentence = match.parent.get_text()
+    # print(sentence)
+    # sentences.append(sentence.strip())
+    print(sentence.strip())
+
+    return sentence.strip()
