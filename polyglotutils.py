@@ -28,6 +28,8 @@ count = 0
 total = 0
 lemma_list = []
 visited = []
+freq = 0
+lemma = 0
 # print(str(29) + str(type(lemma_list)))
 
 
@@ -95,11 +97,10 @@ def corpus(lang, overwrite='n', input_file=None, output_file=None):
 # creates a list of words by frequency found in input_file
 def frequency(lang, overwrite='n', input_file=None, output_file=None):
     # temporary measure to allow input of 3 digit lang codes - will not work for all codes eg lv / lav Latvian
-    lang_3 = None
+    lang_2 = None
     try:
         if lang[2] is not None:
-            lang_3 = lang
-            lang = lang[:2]
+            lang_2 = lang[:2]
     except IndexError:
         lang = lang
 
@@ -107,7 +108,6 @@ def frequency(lang, overwrite='n', input_file=None, output_file=None):
         input_file = lang + '_corpus.txt'
     if output_file is None:
         output_file = lang + '_corpus_freq.csv'
-
 
         
     if overwrite == 'n':
@@ -163,7 +163,8 @@ def frequency(lang, overwrite='n', input_file=None, output_file=None):
     checkpoint = time.time()
     print('Time since start: ' + duration(start_time, checkpoint))
 
-    merge(lang, overwrite)
+    # only call merge function if file already lemmatised
+    # merge(lang, overwrite)
 
 
 def create_word_list(file):
@@ -217,8 +218,10 @@ def scrape_lemmas(lang, language, overwrite='n'):
         print('Scraping ' + pos + ' lemmas...')
         lemma_list = scrape(language, pos)
         lemma_count = len(lemma_list)
-        # print(str(195) + str(type(lemma_list)))
-        with open(lang + '_' + pos.lower() + '_lemmas.csv', 'w', encoding='utf-8',
+        print(str(lemma_count) + ' ' + pos + ' lemmas scraped!')
+        if lemma_count > 5000:
+            print("Consider using a lemmatiser instead of the lemmatise function due to the high number of lemmas.")
+        with open(lang + '_' + pos.lower() + 's.csv', 'w', encoding='utf-8',
                   newline='') as csvW:  # change to 'a' if want to append instead of overwrite
             writer = csv.writer(csvW, delimiter=',', quotechar='@', quoting=csv.QUOTE_MINIMAL)
             # print(def_list)
@@ -226,9 +229,6 @@ def scrape_lemmas(lang, language, overwrite='n'):
             writer.writerows(lemma_list)
             lemma_list = []
 
-    print(str(lemma_count) + ' ' + pos + ' lemmas scraped!')
-    if lemma_count > 5000:
-        print("Consider using a lemmatiser instead of the lemmatise function due to the high number of lemmas.")
     checkpoint = time.time()
     print('Time since start: ' + duration(start_time, checkpoint))
 
@@ -311,7 +311,7 @@ def scrape(language, pos, url=None):
     return lemma_list
 
 
-def inflect(lang, language, overwrite='n', input_file=None):
+def inflect(lang, language, pos=None, overwrite='n', input_file=None, lemma_col=1):
     pos_list = ['Noun', 'Verb', 'Adjective', 'Adverb', 'Preposition', 'Conjunction', 'Pronoun', 'Determiner', 'Numeral',
                 'Proper_noun', 'Personal_pronoun', 'Article', 'Interjection']
 
@@ -337,15 +337,22 @@ def inflect(lang, language, overwrite='n', input_file=None):
 
     words = []
     form_list = []
+    pos_break = False
     global count
     global total
     percent = 0
 
-    for pos in pos_list:
+    if pos is not None:
+        pos_break = True
+        pos_param = pos
 
-        print('Inflecting ' + pos.lower() + 's...')
+    for pos in pos_list:
+        if pos_break:
+            pos = pos_param
+        
         if input_file is None:
-            input_file = lang + '_' + pos.lower() + '_lemmas.csv'
+            input_file = lang + '_' + pos.lower() + 's.csv'
+        print('Inflecting ' + pos.lower() + 's...')
         count = 0
         begin = time.time()
         # print(begin)
@@ -354,8 +361,7 @@ def inflect(lang, language, overwrite='n', input_file=None):
                   encoding='utf-8') as csvR:  # change to 'a' if want to append instead of overwrite
             reader = csv.reader(csvR)
             for row in reader:
-                # print(row[0])
-                words.append(row[0])
+                words.append(row[lemma_col].replace("'",""))
         total = len(words)
 
         for word in words:
@@ -373,8 +379,7 @@ def inflect(lang, language, overwrite='n', input_file=None):
                 page = urlopen(quote_page)
             except:
                 print('No web page was found at ' + quote_page)
-                # not_found(form_list)
-                return
+                continue
 
             soup = BeautifulSoup(page, 'html.parser')
 
@@ -385,7 +390,6 @@ def inflect(lang, language, overwrite='n', input_file=None):
             lang_header = body.find(id=language.replace(' ','_'))
             if lang_header is None:
                 print(language + ' header not found')
-                # not_found()
                 continue
             pos_correct = False
 
@@ -493,20 +497,12 @@ def inflect(lang, language, overwrite='n', input_file=None):
             writer = csv.writer(csvW, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
             writer.writerows(form_list)
         print(pos + " inflection completed at " + time.localtime(time.time()) + "!")
+        if pos_break:
+            break
 
-    print('All inflection completed!')
+    print('All inflections completed!')
     checkpoint = time.time()
     print('Time since start: ' + duration(start_time, checkpoint))
-
-
-# creates an empty line in output file if inflections could not be found
-'''def not_found(form_list):
-    forms = []
-    i = 0
-    while i < 9:
-        forms.append('')
-        i += 1
-    form_list.append(forms)'''
 
 
 def lemmatise(lang, overwrite='n'):
@@ -595,8 +591,7 @@ def translate(lang, overwrite='n'):
             page = urlopen(quote_page)
         except:
             print('No web page was found at ' + quote_page + '. Did you enter a valid English word?')
-            # not_found(word)
-            return
+            continue
 
         soup = BeautifulSoup(page, 'html.parser')
 
@@ -698,7 +693,6 @@ def translate(lang, overwrite='n'):
             if not found:
                 # target = GoogleTranslate(word)
                 if target is None:
-                    # not_found(word)
                     return
                 else:
                     trans_row.append(' - ' + target)
@@ -719,33 +713,26 @@ def translate(lang, overwrite='n'):
     print('Time since start: ' + duration(start_time, checkpoint))
 
 
-# creates an empty line in output file if inflections could not be found
-'''def not_found(word):
-    print('No translation found')
-    trans_row = []
-    trans_row.append(word)
-    trans_row.append('')
-    trans_list.append(trans_row)'''
-
-
-def define(lang, language, overwrite='n'):
+def define(lang, language, overwrite='n', input_file=None, pos=None, lemma_col=0):
     words = []
-    pos = 'Adverb'
     pos_list = ['Noun', 'Verb', 'Adjective', 'Adverb', 'Preposition', 'Conjunction', 'Pronoun', 'Determiner', 'Numeral',
-                'Proper noun',
-                'Article']
+                'Proper noun', 'Article']
     def_list = []
     def_row = []
+    definitions = []
     pos_correct = False
     ipa = None
     gender = None
 
-    with open(lang + '_forms.csv', 'r',
+    if input_file is None:
+        input_file = lang + "_sketch.csv"
+
+    with open(input_file, 'r',
               encoding='utf-8') as csvR:  # change to 'a' if want to append instead of overwrite
         reader = csv.reader(csvR)
         for row in reader:
             # print(row[0])
-            words.append(row[0])
+            words.append(row[lemma_col])
 
     for word in words:
         if pos in pos_list:
@@ -755,7 +742,6 @@ def define(lang, language, overwrite='n'):
         if word == '||':
             return
 
-        # print(word)
         word = word.strip()
         word = word.replace(' ', '_')
         # encodes the word in a way that the webpage will recognise unicode
@@ -767,8 +753,7 @@ def define(lang, language, overwrite='n'):
             page = urlopen(quote_page)
         except:
             print('No web page was found at ' + quote_page)
-            # not_found()
-            return
+            continue
 
         soup = BeautifulSoup(page, 'html.parser')
 
@@ -787,8 +772,7 @@ def define(lang, language, overwrite='n'):
         lang_header = soup.find(id=language)
         if lang_header is None:
             print(language + ' header not found')
-            # not_found(form_list)
-            return
+            continue
 
         # loops through HTML following the language header
         next_section = lang_header.find_all_next()
@@ -888,9 +872,10 @@ def define(lang, language, overwrite='n'):
                                 if pos == '':
                                     definition = part_of_speech + ': ' + definition
 
-                                def_row.append(definition)
+                                definitions.append(definition)
                             # break;
 
+            def_row.append(definitions)
             if ipa is not None:
                 def_row.insert(0, ipa)
             else:
@@ -917,21 +902,9 @@ def define(lang, language, overwrite='n'):
     print('Time since start: ' + duration(start_time, checkpoint))
 
 
-# creates an empty line in output file if inflections could not be found
-'''def not_found():
-    # def_list.append(GoogleTranslate(word))
-    # def_row.append(word)
-    # def_list.append(def_row)
-    def_row = []
-    # def_row.append(word)
-    print(word, def_row)
-    def_list.append(def_row)'''
-
-
 def google_translate(word, lang=None):
-    # requires langcode to be the same on wiktionary and google translate - not true for serbo-croatian and croatian
+    # uses the two digit language code
     translator = Translator()
-    print('Trying google translate')
     try:
         if lang is not None:
             translation = translator.translate(word, dest='en', src=lang).text
@@ -940,14 +913,18 @@ def google_translate(word, lang=None):
     except ValueError:
         print("ERROR: The src language code used by google translate is different to the one used by Wiktionary.")
         return
-    print(translation)
+    # print(translation)
     return translation
 
 
 # lemma must be first column, freqs second
-def merge(lang, overwrite='n', input_file=None):
-    print("Merging duplicates...")
+def merge(lang, overwrite='n', input_file=None, freq_col=1, lemma_col=0):
+    # print("Merging duplicates...")
     freq_list = []
+    global freq
+    global lemma
+    freq = freq_col
+    lemma = lemma_col
 
     if overwrite == 'n':
         return
@@ -960,52 +937,40 @@ def merge(lang, overwrite='n', input_file=None):
             # print(row[0])
             freq_list.append(row)
 
-    '''file = open(input_file, 'r', encoding='utf-8')
-    if file is None:
-        print('Invalid file.')
-        return
-    for line in file:
-        for item in line:
-            freq_row.append(item)
-        freq_list.append(freq_row)
-    file.close()'''
-
     print("Alphabetising...")
-    #print(freq_list[0])
-    #print(freq_list[0][0])
-    alpha_freqs = sorted(freq_list)
-    #print(alpha_freqs[20:100])
+    alpha_freqs = sorted(freq_list, key=sort_by_lemma)
 
     # convert freqs to int rather than str
     for row in alpha_freqs:
-        row[1] = int(row[1])
+        row[freq_col] = row[freq_col].replace("'", "")
+        row[freq_col] = int(float((row[freq_col])))
 
     x = 0
     try:
         while x < len(alpha_freqs):
-            current_lemma = alpha_freqs[x][0]
-            next_lemma = alpha_freqs[x+1][0]
+            current_lemma = alpha_freqs[x][lemma_col]
+            next_lemma = alpha_freqs[x+1][lemma_col]
             # if duplicate, merge frequency counts
             while current_lemma == next_lemma:
                 # print("Duplicate found.")
-                current_freq = int(alpha_freqs[x][2])
-                next_freq = int(alpha_freqs[x+1][2])
-                # print(alpha_freqs[x+1][1] + " has the same lemma as " + alpha_freqs[x][1] + ". By adding " +
-                # str(current_freq) + " and " + str(next_freq) + " the new total is " + str(current_freq + next_freq))
+                current_freq = int(alpha_freqs[x][freq_col])
+                next_freq = int(alpha_freqs[x+1][freq_col])
+                '''print(alpha_freqs[x+1][lemma_col] + " has the same lemma as " + alpha_freqs[x][lemma_col] + ". By adding " +
+                str(current_freq) + " and " + str(next_freq) + " the new total is " + str(current_freq + next_freq))'''
                 current_freq += next_freq
-                alpha_freqs[x][2] = current_freq
+                alpha_freqs[x][freq_col] = current_freq
                 alpha_freqs.pop(x+1)
-                next_lemma = alpha_freqs[x + 1][0]
+                next_lemma = alpha_freqs[x + 1][lemma_col]
             x += 1
     except IndexError:
         # reached end of list
         x = 0
 
     # sort by frequency again
-    unique_freqs = sorted(alpha_freqs, key=take_third, reverse=True)
+    unique_freqs = sorted(alpha_freqs, key=sort_by_freq, reverse=True)
     print(unique_freqs[:10])
 
-    with open(input_file, 'w', encoding='utf-8', newline='') as csvW:  # change to 'a' if want to append instead of overwrite
+    with open(input_file, 'w', encoding='utf-8', newline='') as csvW:
         writer = csv.writer(csvW, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
         writer.writerows(unique_freqs)
 
@@ -1013,14 +978,21 @@ def merge(lang, overwrite='n', input_file=None):
     print('Time since start: ' + duration(start_time, checkpoint))
 
 
-def take_third(elem):
-    return elem[2]
+def sort_by_freq(elem):
+    global freq
+    return elem[freq]
+
+
+def sort_by_lemma(elem):
+    global lemma
+    return elem[lemma]
 
 
 # collects example sentences for each form from Tatoeba
 def find_example(lang, word):
-    sentences = []
-    quote_page = "https://tatoeba.org/eng/sentences/search?from=" + lang + "&to=und&query=" + urllib.parse.quote(word)
+    quote_page = "https://tatoeba.org/eng/sentences/search?query==" + urllib.parse.quote(word) + "&from=" + lang + \
+        "&to=eng&user=&orphans=no&unapproved=no&has_audio=&tags=&list=&native=&trans_filter=limit&trans_to=eng&" \
+        "trans_link=&trans_user=&trans_orphan=no&trans_unapproved=no&trans_has_audio=&sort=relevance&sort_reverse="
 
     try:
         page = urlopen(quote_page)
@@ -1030,19 +1002,12 @@ def find_example(lang, word):
 
     soup = BeautifulSoup(page, 'html.parser')
 
-    # match = soup.find_next(class_="match")
-    # sentence = match.parent.get_text()
-
-    # do below if want more than one sentence
     matches = soup.find_all(class_="match")
 
     if len(matches) == 0:
         return ""
     match = matches[0]
-    # for match in matches:
-    sentence = match.parent.get_text()
-    # print(sentence)
-    # sentences.append(sentence.strip())
-    print(sentence.strip())
 
-    return sentence.strip()
+    sentence = match.parent.get_text().strip()
+
+    return sentence
