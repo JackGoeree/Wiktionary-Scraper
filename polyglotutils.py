@@ -1,6 +1,7 @@
 from urllib.request import urlopen
 import urllib.parse
 from bs4 import BeautifulSoup
+import bs4
 from gensim.corpora import WikiCorpus
 import csv
 import time
@@ -989,25 +990,130 @@ def sort_by_lemma(elem):
 
 
 # collects example sentences for each form from Tatoeba
-def find_example(lang, word):
-    quote_page = "https://tatoeba.org/eng/sentences/search?query==" + urllib.parse.quote(word) + "&from=" + lang + \
-        "&to=eng&user=&orphans=no&unapproved=no&has_audio=&tags=&list=&native=&trans_filter=limit&trans_to=eng&" \
-        "trans_link=&trans_user=&trans_orphan=no&trans_unapproved=no&trans_has_audio=&sort=relevance&sort_reverse="
+def find_example(lang, word, audio=True, list=None):
+
+    if list is None:
+        audio_url = "https://tatoeba.org/eng/sentences/search?query==" + urllib.parse.quote(word) + "&from=" + lang + \
+                    "&to=eng&user=&orphans=no&unapproved=no&has_audio=yes&tags=&list=&native=&trans_filter=limit&trans_to=eng&" \
+                    "trans_link=&trans_user=&trans_orphan=no&trans_unapproved=no&trans_has_audio=&sort=relevance&sort_reverse="
+    else:
+        print("Audio files may be subject to copyright.")
+        audio_url = "https://tatoeba.org/eng/sentences/search?query==" + urllib.parse.quote(word) + "&from=" + lang + \
+                    "&to=eng&user=&orphans=no&unapproved=no&has_audio=yes&tags=&list=" + list + "&native=&trans_filter=limit&trans_to=eng&" \
+                    "trans_link=&trans_user=&trans_orphan=no&trans_unapproved=no&trans_has_audio=&sort=relevance&sort_reverse="
+
+    no_audio_url = "https://tatoeba.org/eng/sentences/search?query==" + urllib.parse.quote(word) + "&from=" + lang + \
+                   "&to=eng&user=&orphans=no&unapproved=no&has_audio=&tags=&list=&native=&trans_filter=limit&trans_to=eng&" \
+                   "trans_link=&trans_user=&trans_orphan=no&trans_unapproved=no&trans_has_audio=&sort=relevance&sort_reverse="
+
+    # prefer sentences with audio
+    if audio:
+        quote_page = audio_url
+    else:
+        quote_page = no_audio_url
+
+    sentence_id = ""
+
+    matches = try_url(quote_page)
+
+    if matches is None and audio:
+        matches = try_url(no_audio_url)
+
+    if matches is None:
+        return "", ""
+
+    match = matches[0]
+
+    sentence = match.parent.get_text().strip()
+
+    # locates the sentence_id
+    sentence_id_header = match.find_previous(class_="header")
+    i = 1
+    for tag in sentence_id_header.descendants:
+        if type(tag) == bs4.element.NavigableString:
+            continue
+        else:
+            try:
+                i += 1
+                if i == 2:
+                    sentence_id = tag.a.get_text()[1:]
+                    break
+            except KeyError:
+                sentence_id = sentence_id
+
+    return sentence, sentence_id
+
+
+# WARNING: most Tatoeba audio is copyright-protected
+def download_sentence_audio(lang, sentence_id):
+    try:
+        url = "https://audio.tatoeba.org/sentences/"  + lang + "/" + sentence_id + ".mp3"
+        mp3 = urlopen(url)
+    except urllib.error.HTTPError:
+        print("This sentence has no audio.")
+        return
+    with open(lang + "_" + sentence_id + '.mp3', 'wb') as file:
+        file.write(mp3.read())
+
+
+def download_word_audio(lang, word, overwrite="n"):
+
+    if overwrite == 'n':
+        try:
+            file = lang + "_" + word + '.ogg'
+            if not os.path.isfile(file):
+                raise FileNotFoundError
+            return
+        except FileNotFoundError:
+            print(lang + "_" + word + '.ogg' + ' not found, commencing download...')
+
+    iso2 = get_iso2 (lang)
+    word = word.replace(" ", "_");
+    try:
+        url = "https://commons.wikimedia.org/wiki/File:" + iso2 + "-" + urllib.parse.quote(word) + ".ogg"
+        # print(url)
+        page = urlopen(url)
+    except urllib.error.HTTPError:
+        print(word + " has no audio.")
+        return
+
+    soup = BeautifulSoup(page, 'html.parser')
+    # print(soup)
+    link = soup.find(class_="internal")
+    # print(link)
+    ogg_url = link['href']
+    # print(ogg_url)
 
     try:
-        page = urlopen(quote_page)
-    except ValueError:
-        print("No web page was found at " + quote_page + ". Did you enter a valid English word?")
+        ogg = urlopen(ogg_url)
+    except urllib.error.HTTPError:
+        print(word + " has no audio.")
         return
+
+    with open(lang + "_" + word + '.ogg', 'wb') as file:
+        file.write(ogg.read())
+
+
+def get_iso2(iso3):
+    iso2 = {"deu": "de", "lav": "lv", "pol": "pl", "slv": "sl"}
+    return iso2[iso3]
+
+
+def try_url(url):
+    # print(url)
+
+    try:
+        page = urlopen(url)
+    except ValueError:
+        print("No web page was found at " + url + ". URL may be invalid.?")
+        return "", ""
 
     soup = BeautifulSoup(page, 'html.parser')
 
     matches = soup.find_all(class_="match")
 
     if len(matches) == 0:
-        return ""
-    match = matches[0]
-
-    sentence = match.parent.get_text().strip()
-
-    return sentence
+        print("No sentences found.")
+        return
+    else:
+        return matches
