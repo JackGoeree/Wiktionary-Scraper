@@ -1,2 +1,2 @@
 # polyglotutils
-Utility methods for computational linguistics
+Utility methods for language learning
