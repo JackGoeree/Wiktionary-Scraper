@@ -39,9 +39,9 @@ def main(lang, language, overwrite='n'):
     corpus(lang, lang + '_wiki.bz2', lang + '_corpus.txt', overwrite)
     frequency(lang, lang + '_corpus.txt', overwrite)
     scrape_lemmas(lang, language, overwrite)
-    inflect(lang, language, overwrite)
+    inflect(lang, language, overwrite) #inflects scraped lemmas
     # combine lemmas and inflections into a forms.csv
-    lemmatise(lang, overwrite)
+    lemmatise(lang, overwrite) #lemmatises freq words by comparing to scraped inflections
     translate(lang, overwrite)
     # combine _forms and _translations
     define(lang, language, overwrite)
@@ -110,7 +110,6 @@ def frequency(lang, overwrite='n', input_file=None, output_file=None):
     if output_file is None:
         output_file = lang + '_corpus_freq.csv'
 
-        
     if overwrite == 'n':
         try:
             if os.path.isfile(output_file):
@@ -312,10 +311,12 @@ def scrape(language, pos, url=None):
     return lemma_list
 
 
-def inflect(lang, language, pos=None, overwrite='n', input_file=None, lemma_col=1):
+def inflect(lang, language, pos=None, overwrite='n', input_file=None, lemma_col=0):
     pos_list = ['Noun', 'Verb', 'Adjective', 'Adverb', 'Preposition', 'Conjunction', 'Pronoun', 'Determiner', 'Numeral',
                 'Proper_noun', 'Personal_pronoun', 'Article', 'Interjection']
-
+    resume_point = None
+    resume_row = 0
+    
     if overwrite == 'n':
         try:
             for part in pos_list:
@@ -324,13 +325,34 @@ def inflect(lang, language, pos=None, overwrite='n', input_file=None, lemma_col=
                 file = lang + '_' + part.lower() + '_inflections.csv'
                 # print(file)
                 if os.path.isfile(file):
-                    pos_list.remove(part)
-                    # print(lang + '_' + part.lower() + '_inflections.csv' + ' found.')
+                    # pos_list.remove(part)
+                    print(lang + '_' + part.lower() + '_inflections.csv' + ' found.')
+                    
+                    # open the file and check for last entry
+                    with open (file, 'r', encoding='utf-8') as inflectionsCSV:
+                        if input_file is None:
+                            input_file = lang + '_' + part.lower() + 's.csv'
+                        with open (input_file, 'r', encoding='utf-8') as lemmasCSV:
+                            i = 0
+                            for line in inflectionsCSV:
+                                if line.strip() != "":
+                                    for lemma in lemmasCSV:
+                                        print(lemma.strip() + "|" + line)
+                                        if "," + lemma.strip() + "," in line:
+                                            resume_lemma = lemma
+                                            resume_row = i
+                                            print(resume_lemma)
+                                            break
+                                        else:
+                                            continue
+                                i += 1
+                    print("Last entry was " + resume_lemma + " at row " + str(resume_row))
+                    break
+                    
                 else:
-                    # print('HEH')
                     raise FileNotFoundError
-            print('All inflection files found.')
-            return
+            # print('All inflection files found.')
+            # return
         except FileNotFoundError:
             print(lang + '_' + part.lower() + '_inflections.csv not found.')
 
@@ -361,9 +383,15 @@ def inflect(lang, language, pos=None, overwrite='n', input_file=None, lemma_col=
         with open(input_file, 'r',
                   encoding='utf-8') as csvR:  # change to 'a' if want to append instead of overwrite
             reader = csv.reader(csvR)
+            x = 0
             for row in reader:
-                words.append(row[lemma_col].replace("'",""))
+                if x < resume_row:
+                    x += 1
+                    continue
+                else:
+                    words.append(row[lemma_col].replace("'",""))
         total = len(words)
+        print(str(total) + " still to go.")
 
         for word in words:
 
@@ -493,11 +521,13 @@ def inflect(lang, language, pos=None, overwrite='n', input_file=None, lemma_col=
                 # else:
                     # print('-', end='\r')'''
 
-        with open(lang + '_' + pos.lower() + '_inflections.csv', 'w', encoding='utf-8',
-                  newline='') as csvW:  # change to 'a' if want to append instead of overwrite
-            writer = csv.writer(csvW, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-            writer.writerows(form_list)
-        print(pos + " inflection completed at " + time.localtime(time.time()) + "!")
+            with open(lang + '_' + pos.lower() + '_inflections.csv', 'a', encoding='utf-8',
+                      newline='') as csvW:  # change to 'a' if want to append instead of overwrite
+                writer = csv.writer(csvW, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+                # writer.writerows(form_list)
+                writer.writerow(form_row)
+            
+        # print(pos + " inflection completed at " + time.localtime(time.time()) + "!")
         if pos_break:
             break
 
@@ -1028,5 +1058,49 @@ def download_word_audio(lang, word, overwrite="n"):
 
 
 def get_iso2(iso3):
-    iso2 = {"deu": "de", "lav": "lv", "pol": "pl", "slv": "sl"}
+    iso2 = {"deu": "de", "lav": "lv", "pol": "pl", "slv": "sl", "hrv":"hr"}
     return iso2[iso3]
+
+
+'''def find_sentences(lang, word):
+    file = open(lang + "_corpus.txt", 'w', encoding='utf-8')
+    string = ''
+    x = 0
+    for line in file:
+        x += 1
+        if x % 1000 == 0:
+            # break
+            print(x)
+        string += line
+
+    sentence_list = string.split(".")
+    sentences = []
+
+    for sentence in sentence_list:
+        if word in sentence:
+            sentences.append(sentence)
+
+    print(sentences)'''
+
+def find_example(lang, lemma):
+    examples = []
+    file = open(lang + "_raw.txt", 'r', encoding='utf-8')
+    with open(lang + "_examples.csv", "w", encoding='utf-8') as csvW: 
+        writer = csv.writer(csvW, delimiter=',', quotechar='@', quoting=csv.QUOTE_MINIMAL)
+        for line in file:
+            #prevent merely looking for the sequence of letters as opposed to the word eg 'kto' = 'nitko'
+            if " " + lemma + " " in line:
+                #print (line)
+                exampleRow = []
+                exampleRow.append(line) #remove new line first
+                translation = google_translate(line, get_iso2(lang))
+                exampleRow.append(translation)
+                examples.append(exampleRow)
+                print(exampleRow)
+                
+            # elif at start of line, end of line or preceded/followed by punctuation
+        for row in examples:
+            writer.writerow (row)
+                
+    file.close()
+    
