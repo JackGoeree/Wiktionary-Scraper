@@ -84,8 +84,9 @@ def corpus(lang, overwrite='n', input_file=None, output_file=None):
         output.write(bytes(' '.join(text), 'utf-8').decode('utf-8') + '\n')
         # output.write(bytes(' '.join(text), 'utf-8') + bytes('\n'))
         i = i + 1
+        if i % 1000 == 0:
+            print ('Processed ' + str(i) + ' articles')
         if i % 10000 == 0:
-            print('Processed ' + str(i) + ' articles')
             # 40k articles caused a memory error
             break
     output.close()
@@ -312,10 +313,12 @@ def scrape(language, pos, url=None):
 
 
 def inflect(lang, language, pos=None, overwrite='n', input_file=None, lemma_col=0):
-    pos_list = ['Noun', 'Verb', 'Adjective', 'Adverb', 'Preposition', 'Conjunction', 'Pronoun', 'Determiner', 'Numeral',
-                'Proper_noun', 'Personal_pronoun', 'Article', 'Interjection']
+    pos_list = ['Noun', 'Verb', 'Adjective']
     resume_point = None
     resume_row = 0
+
+    if pos is not None:
+        pos_list = [pos]
     
     if overwrite == 'n':
         try:
@@ -338,7 +341,7 @@ def inflect(lang, language, pos=None, overwrite='n', input_file=None, lemma_col=
                                 if line.strip() != "":
                                     for lemma in lemmasCSV:
                                         print(lemma.strip() + "|" + line)
-                                        if "," + lemma.strip() + "," in line:
+                                        if lemma.strip() + "," in line:
                                             resume_lemma = lemma
                                             resume_row = i
                                             print(resume_lemma)
@@ -459,10 +462,14 @@ def inflect(lang, language, pos=None, overwrite='n', input_file=None, lemma_col=
                                 # print(part)
                                 # print(item.span['id'])
                                 # print(part in item.span['id'])
+
+                                # limit is the next part of speech for that word and that language
                                 if part in item.span['id']:
-                                    # print(item.get_text() + ' is the limit')
                                     lang_limit = item
-                                    # print('lang_limit is not None')
+                                    break
+                                elif item.name == 'hr':
+                                    print('The section for ' + language + " does not treat this word as a " + pos)
+                                    lang_limit = item
                                     break
                             except TypeError:
                                 # item has no span
@@ -484,11 +491,20 @@ def inflect(lang, language, pos=None, overwrite='n', input_file=None, lemma_col=
                                 for element in item.descendants:
                                     if element.name == 'td':
                                         try:
-                                            form = element.get_text()
-                                            form = form.rstrip()
-                                            form_row.append(form)
+                                            # span = element.span
+                                            # print(span.attrs)
+                                            # print(span.lang)
+                                            # print(span['lang'])
+                                            if element.span['lang'] == lang:
+                                                try:
+                                                    form = element.get_text()
+                                                    form = form.rstrip()
+                                                    form_row.append(form)
+                                                except:
+                                                    # no text
+                                                    continue
                                         except:
-                                            # no text
+                                            # no span
                                             continue
                         except KeyError:
                             # item has no class attribute
@@ -537,8 +553,7 @@ def inflect(lang, language, pos=None, overwrite='n', input_file=None, lemma_col=
 
 
 def lemmatise(lang, overwrite='n'):
-    pos_list = ['Noun', 'Verb', 'Adjective', 'Adverb', 'Preposition', 'Conjunction', 'Pronoun', 'Determiner', 'Numeral',
-                'Proper_noun', 'Personal_pronoun', 'Article', 'Interjection']
+    pos_list = ['Noun', 'Verb', 'Adjective']
     form_rows = []
     freq_words = []
     lemma_list = []
@@ -1058,7 +1073,7 @@ def download_word_audio(lang, word, overwrite="n"):
 
 
 def get_iso2(iso3):
-    iso2 = {"deu": "de", "lav": "lv", "pol": "pl", "slv": "sl", "hrv":"hr"}
+    iso2 = {"deu": "de", "lav": "lv", "pol": "pl", "slv": "sl", "hrv":"hr", "ces":"cs"}
     return iso2[iso3]
 
 
