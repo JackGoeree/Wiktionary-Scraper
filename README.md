@@ -1,2 +1,2 @@
-# polyglotutils
-Utility methods for language learning
+# Wiktionary Scraper
+Wiktionary scraper for language learning
